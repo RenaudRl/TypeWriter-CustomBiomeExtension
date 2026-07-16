@@ -21,6 +21,7 @@ repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.codemc.io/repository/maven-public/")
+    maven("https://repo.extendedclip.com/releases/")
     maven("https://maven.typewritermc.com/beta/")
     maven("https://maven.typewritermc.com/external/")
 }

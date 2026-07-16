@@ -30,6 +30,7 @@ class NMSHandler {
     private val biomeClass = ReflectionUtil.getNMSClass("net.minecraft.world.level.biome.Biome")
     private val holderClass = ReflectionUtil.getNMSClass("net.minecraft.core.Holder")
     private val biomeBuilderClass = ReflectionUtil.getNMSClass("net.minecraft.world.level.biome.Biome\$BiomeBuilder")
+    private val temperatureModifierClass = ReflectionUtil.getNMSClass("net.minecraft.world.level.biome.Biome\$TemperatureModifier")
     
     // BiomeSpecialEffects
     private val biomeSpecialEffectsBuilderClass = ReflectionUtil.getNMSClass("net.minecraft.world.level.biome.BiomeSpecialEffects\$Builder")
@@ -46,7 +47,17 @@ class NMSHandler {
     private val frozenField = try { ReflectionUtil.getField(mappedRegistryClass, "frozen") } catch (e: Exception) { ReflectionUtil.getField(mappedRegistryClass, "l") }
     private val intrusiveField = try { ReflectionUtil.getField(mappedRegistryClass, "unregisteredIntrusiveHolders") } catch (e: Exception) { ReflectionUtil.getField(mappedRegistryClass, "m") }
 
-    fun createAndRegisterBiome(key: NamespacedKey, colors: BiomeColors, attributes: BiomeAttributes) {
+    /**
+     * Registers a biome at runtime. [temperature] and [downfall] are inherited from the
+     * base biome when null, matching the entry's "Leave empty to inherit" contract.
+     */
+    fun createAndRegisterBiome(
+        key: NamespacedKey,
+        colors: BiomeColors,
+        attributes: BiomeAttributes,
+        temperature: Double? = null,
+        downfall: Double? = null,
+    ) {
         val server = Bukkit.getServer()
         val getServerMethod = craftServerClass.getMethod("getServer")
         val minecraftServer = getServerMethod.invoke(server)
@@ -120,6 +131,7 @@ class NMSHandler {
         grassColorModifierMethod.invoke(effectsBuilder, getGrassColorModifier.invoke(originalEffects))
         val effects = biomeSpecialEffectsBuilderClass.getMethod("build").invoke(effectsBuilder)
 
+
         // --- Build Environment Attributes (Fog, Sky, Water Fog) ---
         // EnvironmentAttributeMap.builder()
         val builderMethod = environmentAttributeMapClass.getMethod("builder")
@@ -161,12 +173,22 @@ class NMSHandler {
         val hasPrecipitationMethod = biomeClass.getMethod("hasPrecipitation")
         biomeBuilderClass.getMethod("hasPrecipitation", Boolean::class.javaPrimitiveType).invoke(biomeBuilder, hasPrecipitationMethod.invoke(baseBiome))
         
-        // Temperature/Downfall
-        // For 1.21.11, assume defaults if getters hard to find, or rely on climateSettings if public.
-        // Based on analysis, we can safe-set these or try to fetch.
-        // Let's use standard values for now to avoid looking up protected fields.
-        biomeBuilderClass.getMethod("temperature", Float::class.javaPrimitiveType).invoke(biomeBuilder, 0.8f)
-        biomeBuilderClass.getMethod("downfall", Float::class.javaPrimitiveType).invoke(biomeBuilder, 0.4f)
+        // Climate: configured values win, otherwise inherit the base biome's own climate
+        // (what @Help on the entry promises). Biome.climateSettings is a public final
+        // field holding a record — there are no protected fields to work around here.
+        val baseClimate = biomeClass.getField("climateSettings").get(baseBiome)
+        val climateClass = baseClimate.javaClass
+        val baseTemperature = climateClass.getMethod("temperature").invoke(baseClimate) as Float
+        val baseDownfall = climateClass.getMethod("downfall").invoke(baseClimate) as Float
+
+        biomeBuilderClass.getMethod("temperature", Float::class.javaPrimitiveType)
+            .invoke(biomeBuilder, temperature?.toFloat() ?: baseTemperature)
+        biomeBuilderClass.getMethod("downfall", Float::class.javaPrimitiveType)
+            .invoke(biomeBuilder, downfall?.toFloat() ?: baseDownfall)
+        // The builder defaults temperatureModifier to NONE, so without this a frozen base
+        // biome would silently lose its modifier.
+        biomeBuilderClass.getMethod("temperatureAdjustment", temperatureModifierClass)
+            .invoke(biomeBuilder, climateClass.getMethod("temperatureModifier").invoke(baseClimate))
         
         // Apply Effects
         biomeBuilderClass.getMethod("specialEffects", biomeSpecialEffectsClass).invoke(biomeBuilder, effects)
@@ -194,6 +216,7 @@ class NMSHandler {
         
         register(biomeRegistry, newKey, customBiome, holder)
     }
+
 
     private fun register(registry: Any, key: Any, biome: Any, originalHolder: Any) {
         try {
@@ -252,14 +275,14 @@ class NMSHandler {
                      bindTagsMethod.isAccessible = true
                      bindTagsMethod.invoke(holder, tagsList)
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    com.typewritermc.engine.paper.logger.log(java.util.logging.Level.WARNING, "Unhandled exception in NMSHandler", e)
                 }
             }
 
             intrusiveField.set(registry, null)
             frozenField.set(registry, true)
         } catch (e: Exception) {
-            e.printStackTrace()
+            com.typewritermc.engine.paper.logger.log(java.util.logging.Level.WARNING, "Unhandled exception in NMSHandler", e)
             try { frozenField.set(registry, true) } catch (_: Exception) {}
         }
     }
