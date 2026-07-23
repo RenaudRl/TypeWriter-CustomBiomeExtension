@@ -59,3 +59,7 @@ cd TypeWriter-CustomBiomeExtension
 
 ## 📜 License
 Licensed under the **MIT License**.
+
+## Documentation
+
+Full documentation available at [BTC Studio Docs](https://docs.borntocraftstudio.net/extensions/free/custombiome/).
