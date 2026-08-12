@@ -1,6 +1,10 @@
 package btcrenaud.custombiome.entries.audience
 
+import btcrenaud.custombiome.entries.manifest.CustomBiomeDefinitionEntry
+import btcrenaud.custombiome.service.BiomeSource
+import btcrenaud.custombiome.service.BiomeView
 import btcrenaud.custombiome.util.BiomeResolver
+import btcrenaud.custombiome.util.BiomeSelection
 import com.typewritermc.core.books.pages.Colors
 import com.typewritermc.core.entries.Ref
 import com.typewritermc.core.entries.ref
@@ -31,7 +35,10 @@ class BiomeAudienceEntry(
     override val name: String = "",
     override val children: List<Ref<out AudienceEntry>> = emptyList(),
     
-    @Help("Biome identifiers to filter on. Examples: 'minecraft:plains', 'typewriter:my_biome'")
+    @Help("Custom biomes to filter on, picked from their definitions")
+    val customBiomes: List<Ref<CustomBiomeDefinitionEntry>> = emptyList(),
+
+    @Help("Vanilla biome identifiers to filter on. Examples: 'minecraft:plains'")
     val biomes: List<String> = emptyList(),
     
     @Help("If true, ignore missing biome identifiers instead of throwing errors")
@@ -40,53 +47,58 @@ class BiomeAudienceEntry(
     @Help("If true, only include players in custom biomes (ignores biome list)")
     val customBiomesOnly: Boolean = false,
     
+    @Help("Whether to filter on what the player is shown (overlays included) or what the world contains")
+    val source: BiomeSource = BiomeSource.PLAYER_VIEW,
+
     override val inverted: Boolean = false,
-    
+
 ) : AudienceFilterEntry, Invertible {
-    
+
     override suspend fun display(): AudienceFilter = BiomeAudienceFilter(
         ref(),
+        customBiomes,
         biomes,
         ignoreMissing,
-        customBiomesOnly
+        customBiomesOnly,
+        source
     )
-    
+
     override fun parser() = placeholderParser {
         include(super.parser())
         literal("biome_name") {
-            supplyPlayer { player -> BiomeResolver.readableName(player.location.block.biome) }
+            supplyPlayer { player -> BiomeResolver.readableName(BiomeView.biomeOf(player, source)) }
         }
         literal("biome_id") {
-            supplyPlayer { player -> player.location.block.biome.key.toString() }
+            supplyPlayer { player -> BiomeView.biomeOf(player, source).key.toString() }
         }
         literal("is_custom") {
-            supplyPlayer { player -> BiomeResolver.isCustomBiome(player.location.block.biome).toString() }
+            supplyPlayer { player -> BiomeResolver.isCustomBiome(BiomeView.biomeOf(player, source)).toString() }
         }
     }
 }
 
 class BiomeAudienceFilter(
     ref: Ref<out AudienceFilterEntry>,
+    private val customBiomes: List<Ref<CustomBiomeDefinitionEntry>>,
     private val biomes: List<String>,
     private val ignoreMissing: Boolean,
     private val customBiomesOnly: Boolean,
+    private val source: BiomeSource,
 ) : AudienceFilter(ref) {
-    
+
     override fun filter(player: Player): Boolean {
-        val currentBiome = player.location.block.biome
-        
+        val currentBiome = BiomeView.biomeOf(player, source)
+
         if (customBiomesOnly) {
             return BiomeResolver.isCustomBiome(currentBiome)
         }
-        
-        if (biomes.isEmpty()) {
-            // No filter specified - include all players
-            return true
-        }
-        
-        val targetBiomes = BiomeResolver.resolveIdentifiers(biomes, ignoreMissing)
+
+        // No selection at all means "any biome".
+        if (BiomeSelection.isEmpty(customBiomes, biomes)) return true
+
+        val targetBiomes = BiomeSelection.resolve(customBiomes, biomes, ignoreMissing)
         if (targetBiomes.isEmpty()) return false
-        
+
         return currentBiome in targetBiomes
     }
 }

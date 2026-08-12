@@ -1,6 +1,8 @@
 package btcrenaud.custombiome.entries.variable
 
 import btcrenaud.custombiome.registry.CustomBiomeRegistry
+import btcrenaud.custombiome.service.BiomeSource
+import btcrenaud.custombiome.service.BiomeView
 import btcrenaud.custombiome.util.BiomeResolver
 import com.typewritermc.core.books.pages.Colors
 import com.typewritermc.core.extension.annotations.Entry
@@ -23,15 +25,17 @@ import com.typewritermc.engine.paper.entry.entries.cast
 class CurrentBiomeVariableEntry(
     override val id: String = "",
     override val name: String = "",
-
+    
     @Help("Format for the output: ID returns 'namespace:key', NAME returns readable name")
     val format: BiomeFormat = BiomeFormat.NAME,
+
+    @Help("Whether to read what the player is shown (overlays included) or what the world contains")
+    val source: BiomeSource = BiomeSource.PLAYER_VIEW,
 
 ) : VariableEntry {
 
     override fun <T : Any> get(context: VarContext<T>): T {
-        val player = context.player
-        val biome = player.location.block.biome
+        val biome = BiomeView.biomeOf(context.player, source)
 
         val result = when (format) {
             BiomeFormat.ID -> biome.key.toString()
@@ -39,20 +43,20 @@ class CurrentBiomeVariableEntry(
             BiomeFormat.KEY -> biome.key.key
             BiomeFormat.NAMESPACE -> biome.key.namespace
         }
-
+        
         return context.cast(result)
     }
-
+    
     enum class BiomeFormat {
         @Help("Returns the full key (e.g., 'minecraft:plains')")
         ID,
-
+        
         @Help("Returns a human-readable name (e.g., 'Plains')")
         NAME,
-
+        
         @Help("Returns just the key part (e.g., 'plains')")
         KEY,
-
+        
         @Help("Returns just the namespace (e.g., 'minecraft' or 'typewriter')")
         NAMESPACE,
     }
@@ -60,7 +64,6 @@ class CurrentBiomeVariableEntry(
 
 /**
  * Variable that returns information about a specific biome property.
- * For vanilla biomes, uses Bukkit API for temperature/downfall.
  */
 @Tags("variable")
 @Entry(
@@ -72,40 +75,39 @@ class CurrentBiomeVariableEntry(
 class BiomePropertyVariableEntry(
     override val id: String = "",
     override val name: String = "",
-
+    
     @Help("Which property to return")
     val property: BiomeProperty = BiomeProperty.IS_CUSTOM,
+
+    @Help("Whether to read what the player is shown (overlays included) or what the world contains")
+    val source: BiomeSource = BiomeSource.PLAYER_VIEW,
 
 ) : VariableEntry {
 
     override fun <T : Any> get(context: VarContext<T>): T {
-        val player = context.player
-        val biome = player.location.block.biome
-        val registry: CustomBiomeRegistry = org.koin.java.KoinJavaComponent.get(CustomBiomeRegistry::class.java)
-        val definition = registry.getDefinition(biome.key)
-
+        val biome = BiomeView.biomeOf(context.player, source)
+        val definition = CustomBiomeRegistry.getDefinition(biome.key)
+        
         val result = when (property) {
             BiomeProperty.IS_CUSTOM -> BiomeResolver.isCustomBiome(biome).toString()
-            BiomeProperty.TEMPERATURE -> definition?.temperature?.toString()
-                ?: "N/A"
-            BiomeProperty.DOWNFALL -> definition?.downfall?.toString()
-                ?: "N/A"
+            BiomeProperty.TEMPERATURE -> definition?.temperature?.toString() ?: "unknown"
+            BiomeProperty.DOWNFALL -> definition?.downfall?.toString() ?: "unknown"
             BiomeProperty.BASE_BIOME -> definition?.baseKey?.toString() ?: biome.key.toString()
         }
-
+        
         return context.cast(result)
     }
-
+    
     enum class BiomeProperty {
         @Help("Returns 'true' if in a custom biome, 'false' otherwise")
         IS_CUSTOM,
-
-        @Help("Returns the temperature value (custom biomes use definition, vanilla uses Bukkit API)")
+        
+        @Help("Returns the temperature value (only for custom biomes)")
         TEMPERATURE,
-
-        @Help("Returns the downfall/humidity value (custom biomes use definition, vanilla uses Bukkit API)")
+        
+        @Help("Returns the downfall/humidity value (only for custom biomes)")
         DOWNFALL,
-
+        
         @Help("Returns the base biome key")
         BASE_BIOME,
     }
@@ -124,19 +126,19 @@ class BiomePropertyVariableEntry(
 class CustomBiomeListVariableEntry(
     override val id: String = "",
     override val name: String = "",
-
+    
     @Help("Separator between biome names (default: ', ')")
     val separator: String = ", ",
-
+    
     @Help("Format for each biome: ID or NAME")
     val format: CurrentBiomeVariableEntry.BiomeFormat = CurrentBiomeVariableEntry.BiomeFormat.NAME,
-
+    
 ) : VariableEntry {
-
+    
     override fun <T : Any> get(context: VarContext<T>): T {
-        val registry: CustomBiomeRegistry = org.koin.java.KoinJavaComponent.get(CustomBiomeRegistry::class.java)
+        val registry = CustomBiomeRegistry
         val definitions = registry.allDefinitions()
-
+        
         val result = definitions.joinToString(separator) { def ->
             when (format) {
                 CurrentBiomeVariableEntry.BiomeFormat.ID -> def.key.toString()
@@ -145,7 +147,7 @@ class CustomBiomeListVariableEntry(
                 CurrentBiomeVariableEntry.BiomeFormat.NAMESPACE -> def.key.namespace
             }
         }
-
+        
         return context.cast(result)
     }
 }

@@ -1,81 +1,63 @@
 package btcrenaud.custombiome.placeholder
 
 import btcrenaud.custombiome.registry.CustomBiomeRegistry
+import btcrenaud.custombiome.service.BiomeDiscoveryService
+import btcrenaud.custombiome.service.BiomeView
 import btcrenaud.custombiome.util.BiomeResolver
 import com.typewritermc.core.extension.annotations.Singleton
 import com.typewritermc.engine.paper.extensions.placeholderapi.PlaceholderHandler
 import org.bukkit.entity.Player
 
 /**
- * PlaceholderAPI handler for custom biome placeholders.
+ * PlaceholderAPI handler for custom biomes.
  *
- * Supported placeholders:
- * - %typewriter_custombiome_current% - Current biome ID
- * - %typewriter_custombiome_name% - Current biome display name
- * - %typewriter_custombiome_is_custom% - "true" or "false"
- * - %typewriter_custombiome_temperature% - Biome temperature (custom only)
- * - %typewriter_custombiome_downfall% - Biome downfall (custom only)
- * - %typewriter_custombiome_count% - Total registered custom biomes
- * - %typewriter_custombiome_list% - Comma-separated list of custom biome names
+ * ```
+ * %typewriter_custombiome_current%          biome key under the player
+ * %typewriter_custombiome_id%               same as current
+ * %typewriter_custombiome_name%             readable display name
+ * %typewriter_custombiome_key%              key part only
+ * %typewriter_custombiome_namespace%        namespace part only
+ * %typewriter_custombiome_is_custom%        "true" / "false"
+ * %typewriter_custombiome_temperature%      custom biomes only, "unknown" otherwise
+ * %typewriter_custombiome_downfall%         custom biomes only, "unknown" otherwise
+ * %typewriter_custombiome_base%             base biome the definition inherits from
+ * %typewriter_custombiome_count%            registered custom biomes
+ * %typewriter_custombiome_list%             their display names
+ * %typewriter_custombiome_discovered_count% biomes this player has visited
+ * %typewriter_custombiome_discovered_list%  their keys
+ * ```
+ *
+ * Everything player-facing reads through [BiomeView], so a player under a per-player overlay sees
+ * the biome they are actually being shown rather than the one stored in the world.
  */
 @Singleton
 class CustomBiomePlaceholders : PlaceholderHandler {
 
-    private val registry: CustomBiomeRegistry by lazy {
-        org.koin.java.KoinJavaComponent.get(CustomBiomeRegistry::class.java)
-    }
-
     override fun onPlaceholderRequest(player: Player?, params: String): String? {
-        if (player == null) return null
-
         val key = params.lowercase()
 
-        return when {
-            key == "custombiome_current" || key == "custombiome_id" -> {
-                player.location.block.biome.key.toString()
-            }
+        // Registry-wide values do not depend on a viewer.
+        when (key) {
+            "count" -> return CustomBiomeRegistry.count().toString()
+            "list" -> return CustomBiomeRegistry.allDefinitions().joinToString(", ") { it.displayName }
+        }
 
-            key == "custombiome_name" -> {
-                BiomeResolver.readableName(player.location.block.biome)
-            }
+        if (player == null) return null
 
-            key == "custombiome_is_custom" -> {
-                BiomeResolver.isCustomBiome(player.location.block.biome).toString()
-            }
+        val biome = BiomeView.biomeOf(player)
+        val definition = CustomBiomeRegistry.getDefinition(biome.key)
 
-            key == "custombiome_temperature" -> {
-                val biome = player.location.block.biome
-                registry.getDefinition(biome.key)?.temperature?.toString()
-                    ?: "N/A"
-            }
-
-            key == "custombiome_downfall" -> {
-                val biome = player.location.block.biome
-                registry.getDefinition(biome.key)?.downfall?.toString()
-                    ?: "N/A"
-            }
-
-            key == "custombiome_count" -> {
-                registry.count().toString()
-            }
-
-            key == "custombiome_list" -> {
-                registry.allDefinitions().joinToString(", ") { it.displayName }
-            }
-
-            key == "custombiome_key" -> {
-                player.location.block.biome.key.key
-            }
-
-            key == "custombiome_namespace" -> {
-                player.location.block.biome.key.namespace
-            }
-
-            key == "custombiome_base" -> {
-                val biome = player.location.block.biome
-                registry.getDefinition(biome.key)?.baseKey?.toString() ?: biome.key.toString()
-            }
-
+        return when (key) {
+            "current", "id" -> biome.key.toString()
+            "name" -> BiomeResolver.readableName(biome)
+            "key" -> biome.key.key
+            "namespace" -> biome.key.namespace
+            "is_custom" -> BiomeResolver.isCustomBiome(biome).toString()
+            "temperature" -> definition?.temperature?.toString() ?: "unknown"
+            "downfall" -> definition?.downfall?.toString() ?: "unknown"
+            "base" -> definition?.baseKey?.toString() ?: biome.key.toString()
+            "discovered_count" -> BiomeDiscoveryService.count(player).toString()
+            "discovered_list" -> BiomeDiscoveryService.all(player).joinToString(", ")
             else -> null
         }
     }

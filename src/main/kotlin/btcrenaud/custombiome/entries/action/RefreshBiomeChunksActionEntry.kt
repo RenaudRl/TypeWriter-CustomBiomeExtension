@@ -21,7 +21,7 @@ import com.typewritermc.engine.paper.entry.entries.get
 @Entry(
     "refresh_biome_chunks_action",
     "Refresh biome data for chunks around the player",
-    Colors.BLUE,
+    Colors.RED,
     icon = "mdi:refresh"
 )
 class RefreshBiomeChunksActionEntry(
@@ -30,12 +30,12 @@ class RefreshBiomeChunksActionEntry(
     override val triggers: List<Ref<TriggerableEntry>> = emptyList(),
     override val criteria: List<Criteria> = emptyList(),
     override val modifiers: List<Modifier> = emptyList(),
-
+    
     @Help("Chunk radius to refresh around the player (default: 5)")
     val chunkRadius: Var<Int> = ConstVar(5),
-
+    
 ) : ActionEntry {
-
+    
     override fun ActionTrigger.execute() {
         val radius = chunkRadius.get(player, context)
         BiomePacketHelper.refreshBiomesForPlayer(player, radius)
