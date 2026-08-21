@@ -1,10 +1,10 @@
-﻿plugins {
+plugins {
     kotlin("jvm") version "2.3.20"
     id("com.typewritermc.module-plugin") version "2.1.0"
 }
 
 group = "btcrenaud"
-version = "0.5"
+version = "0.6"
 
 repositories {
     maven("https://jitpack.io/")
@@ -35,6 +35,11 @@ dependencies {
 
     testImplementation(kotlin("test"))
 }
+
+// The engine, Paper and the rest are compileOnly: the server provides them at runtime. Tests get
+// no classpath from that configuration by default, so anything touching an engine type - a
+// Position, a Ref - fails to compile in tests only.
+configurations["testImplementation"].extendsFrom(configurations["compileOnly"])
 
 typewriter {
     namespace = "custombiome"

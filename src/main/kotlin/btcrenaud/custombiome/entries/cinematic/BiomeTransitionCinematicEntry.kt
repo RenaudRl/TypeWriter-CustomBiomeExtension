@@ -81,14 +81,19 @@ private class BiomeTransitionCinematicAction(
             return
         }
 
-        PlayerBiomeOverlayService.apply(player, key, entry.chunkRadius)
+        PlayerBiomeOverlayService.apply(player, key, entry.chunkRadius, owner)
         shown = segment.biome
     }
 
     override suspend fun teardown() {
-        PlayerBiomeOverlayService.clear(player)
+        // Only what this cinematic put there: a quest overlay the player also has must survive the
+        // cinematic ending.
+        PlayerBiomeOverlayService.clear(player, owner)
         shown = null
     }
+
+    /** Scoped to the entry, so two cinematics never undo each other's overlay. */
+    private val owner: String get() = "cinematic:${entry.id}"
 
     override fun canFinish(frame: Int): Boolean = entry.segments canFinishAt frame
 }

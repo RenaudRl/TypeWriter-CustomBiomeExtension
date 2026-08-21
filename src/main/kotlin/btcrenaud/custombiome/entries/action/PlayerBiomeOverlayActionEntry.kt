@@ -65,7 +65,9 @@ class PlayerBiomeOverlayActionEntry(
         }
 
         val radius = chunkRadius.get(player, context).coerceIn(0, 16)
-        if (PlayerBiomeOverlayService.apply(player, key, radius) == null) {
+        // Scoped to this entry: triggering it again moves its own overlay, and never disturbs one
+        // an audience or a cinematic is holding.
+        if (PlayerBiomeOverlayService.apply(player, key, radius, "action:$id") == null) {
             logger.warning(
                 "player_biome_overlay_action: '$identifier' has no network id, " +
                     "so the client cannot be told about it."
@@ -77,7 +79,10 @@ class PlayerBiomeOverlayActionEntry(
         @Help("Show the configured biome to the player")
         APPLY,
 
-        @Help("Remove every overlay and restore the real world")
+        @Help(
+            "Remove every overlay the player has and restore the real world. This includes " +
+                "overlays held by an audience, which only come back when the player re-enters it."
+        )
         CLEAR,
     }
 }

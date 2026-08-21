@@ -15,6 +15,7 @@ import org.bukkit.entity.Player
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Per-player biome overlays.
@@ -24,6 +25,12 @@ import java.util.concurrent.ConcurrentHashMap
  * instantly. This is what makes "the forest looks corrupted, but only during your quest" possible
  * without mutating a shared world.
  *
+ * Overlays are held **per owner**. An owner is whatever asked for the overlay — an audience entry,
+ * an action, a cinematic. Two owners can cover the same chunk; the one that applied last is shown,
+ * and when it goes away the one underneath comes back rather than the whole stack collapsing.
+ * Without this, a player leaving one overlay audience would silently strip every other overlay
+ * they had.
+ *
  * Chunks are re-asserted whenever the server sends the chunk again, so an overlay survives the
  * player walking out of view distance and back.
  */
@@ -31,10 +38,20 @@ object PlayerBiomeOverlayService {
 
     private val logger = LoggerFactory.getLogger(PlayerBiomeOverlayService::class.java)
 
-    private data class ChunkPos(val world: UUID, val x: Int, val z: Int)
+    /** Owner used by the one-shot action, which has no entry-scoped lifetime of its own. */
+    const val ACTION_OWNER = "action"
 
-    /** player -> chunk -> biome shown instead of the real one. */
-    private val overlays = ConcurrentHashMap<UUID, ConcurrentHashMap<ChunkPos, NamespacedKey>>()
+    data class ChunkPos(val world: UUID, val x: Int, val z: Int)
+
+    /** What one owner shows to one player. Chunks may hold different biomes. */
+    private class OwnerOverlay(val order: Long) {
+        val chunks = ConcurrentHashMap<ChunkPos, NamespacedKey>()
+    }
+
+    /** player -> owner -> overlay. */
+    private val overlays = ConcurrentHashMap<UUID, ConcurrentHashMap<String, OwnerOverlay>>()
+
+    private val orderCounter = AtomicLong()
 
     private var listener: ChunkListener? = null
 
@@ -61,43 +78,78 @@ object PlayerBiomeOverlayService {
     /** True when overlays can actually be delivered on this server. */
     val isAvailable: Boolean get() = listener != null
 
-    /**
-     * Shows [biome] to [player] on every chunk within [chunkRadius] of their position.
-     * Returns the number of chunks now overlaid, or null when the biome has no network id.
-     */
-    fun apply(player: Player, biome: NamespacedKey, chunkRadius: Int): Int? {
-        val networkId = CustomBiomeRegistry.injector.networkId(biome) ?: return null
-
-        val world = player.world
-        val centerX = player.location.blockX shr 4
-        val centerZ = player.location.blockZ shr 4
-
-        val chunks = buildSet {
+    /** Every chunk within [chunkRadius] of [center]. */
+    fun chunksAround(world: World, centerX: Int, centerZ: Int, chunkRadius: Int): Set<ChunkPos> =
+        buildSet {
             for (cx in (centerX - chunkRadius)..(centerX + chunkRadius)) {
                 for (cz in (centerZ - chunkRadius)..(centerZ + chunkRadius)) {
-                    add(cx to cz)
+                    add(ChunkPos(world.uid, cx, cz))
                 }
             }
         }
 
-        val forPlayer = overlays.getOrPut(player.uniqueId) { ConcurrentHashMap() }
-        chunks.forEach { (cx, cz) -> forPlayer[ChunkPos(world.uid, cx, cz)] = biome }
+    /**
+     * Shows [biome] to [player] on every chunk within [chunkRadius] of their position, on behalf of
+     * [owner]. Returns the number of chunks now overlaid, or null when the biome has no network id.
+     */
+    fun apply(
+        player: Player,
+        biome: NamespacedKey,
+        chunkRadius: Int,
+        owner: String = ACTION_OWNER,
+    ): Int? {
+        val world = player.world
+        val chunks = chunksAround(
+            world,
+            player.location.blockX shr 4,
+            player.location.blockZ shr 4,
+            chunkRadius,
+        )
+        return apply(player, biome, chunks, owner)
+    }
 
-        BiomePacketHelper.sendSingleBiome(player, world, chunks, networkId)
+    /**
+     * Shows [biome] to [player] over [chunks] on behalf of [owner].
+     *
+     * Applying replaces what that owner was showing; other owners are untouched. Returns the number
+     * of chunks now overlaid by this owner, or null when the biome cannot be sent to a client.
+     */
+    fun apply(
+        player: Player,
+        biome: NamespacedKey,
+        chunks: Set<ChunkPos>,
+        owner: String,
+    ): Int? {
+        if (CustomBiomeRegistry.injector.networkId(biome) == null) return null
+        if (chunks.isEmpty()) return 0
+
+        val forPlayer = overlays.getOrPut(player.uniqueId) { ConcurrentHashMap() }
+        val previous = forPlayer[owner]?.chunks?.keys?.toSet() ?: emptySet()
+
+        val overlay = OwnerOverlay(orderCounter.incrementAndGet())
+        chunks.forEach { overlay.chunks[it] = biome }
+        forPlayer[owner] = overlay
+
+        // Chunks this owner has just released still need to be repainted by whoever is underneath,
+        // or restored, otherwise they keep showing a biome nobody asks for any more.
+        refresh(player, previous - chunks)
+        refresh(player, chunks)
         return chunks.size
+    }
+
+    /** Drops the overlay [owner] holds on [player], restoring whatever is underneath. */
+    fun clear(player: Player, owner: String) {
+        val forPlayer = overlays[player.uniqueId] ?: return
+        val removed = forPlayer.remove(owner) ?: return
+        if (forPlayer.isEmpty()) overlays.remove(player.uniqueId)
+        refresh(player, removed.chunks.keys.toSet())
     }
 
     /** Drops every overlay of [player] and restores what the world really contains. */
     fun clear(player: Player) {
         val forPlayer = overlays.remove(player.uniqueId) ?: return
-
-        val world = player.world
-        val chunks = forPlayer.keys
-            .filter { it.world == world.uid }
-            .map { it.x to it.z }
-            .toSet()
-
-        BiomePacketHelper.sendBiomeUpdate(world, chunks)
+        val chunks = forPlayer.values.flatMap { it.chunks.keys }.toSet()
+        refresh(player, chunks)
     }
 
     fun forget(playerId: UUID) {
@@ -106,9 +158,48 @@ object PlayerBiomeOverlayService {
 
     /** The biome [player] is being shown at this position, or null when no overlay applies. */
     fun overlayAt(player: Player, world: World, blockX: Int, blockZ: Int): NamespacedKey? =
-        overlays[player.uniqueId]?.get(ChunkPos(world.uid, blockX shr 4, blockZ shr 4))
+        winnerAt(player.uniqueId, ChunkPos(world.uid, blockX shr 4, blockZ shr 4))
 
-    fun hasOverlay(player: Player): Boolean = overlays[player.uniqueId]?.isNotEmpty() == true
+    fun hasOverlay(player: Player): Boolean =
+        overlays[player.uniqueId]?.values?.any { it.chunks.isNotEmpty() } == true
+
+    /**
+     * The biome shown at [chunk], across every owner. The most recently applied owner wins, so a
+     * quest overlay laid on top of an ambient one is what the player actually sees.
+     */
+    private fun winnerAt(playerId: UUID, chunk: ChunkPos): NamespacedKey? =
+        overlays[playerId]
+            ?.values
+            ?.mapNotNull { overlay -> overlay.chunks[chunk]?.let { overlay.order to it } }
+            ?.maxByOrNull { it.first }
+            ?.second
+
+    /**
+     * Sends [chunks] again with whatever should be visible there now: the winning overlay, or the
+     * real world when no overlay covers the chunk any more.
+     */
+    private fun refresh(player: Player, chunks: Set<ChunkPos>) {
+        if (chunks.isEmpty()) return
+
+        val world = player.world
+        val relevant = chunks.filter { it.world == world.uid }
+        if (relevant.isEmpty()) return
+
+        val byBiome = mutableMapOf<NamespacedKey, MutableSet<Pair<Int, Int>>>()
+        val restore = mutableSetOf<Pair<Int, Int>>()
+
+        for (chunk in relevant) {
+            val winner = winnerAt(player.uniqueId, chunk)
+            if (winner == null) restore += chunk.x to chunk.z
+            else byBiome.getOrPut(winner) { mutableSetOf() } += chunk.x to chunk.z
+        }
+
+        byBiome.forEach { (biome, positions) ->
+            val networkId = CustomBiomeRegistry.injector.networkId(biome) ?: return@forEach
+            BiomePacketHelper.sendSingleBiome(player, world, positions, networkId)
+        }
+        if (restore.isNotEmpty()) BiomePacketHelper.sendRealBiomes(player, world, restore)
+    }
 
     /**
      * Re-applies the overlay right after the server sends a chunk the player has one for.
@@ -119,13 +210,16 @@ object PlayerBiomeOverlayService {
         override fun onPacketSend(event: PacketSendEvent) {
             if (event.packetType != PacketType.Play.Server.CHUNK_DATA) return
 
-            val player = event.getPlayer<Player>() ?: return
+            // `Player?` on the variable: with `getPlayer<Player>()` the elvis is compiled away and
+            // a channel without a Bukkit player throws instead of being skipped.
+            val player: Player? = event.getPlayer()
+            if (player == null) return
             val forPlayer = overlays[player.uniqueId] ?: return
             if (forPlayer.isEmpty()) return
 
             val column = WrapperPlayServerChunkData(event).column
             val world = player.world
-            val biome = forPlayer[ChunkPos(world.uid, column.x, column.z)] ?: return
+            val biome = winnerAt(player.uniqueId, ChunkPos(world.uid, column.x, column.z)) ?: return
             val networkId = CustomBiomeRegistry.injector.networkId(biome) ?: return
 
             // The overlay has to arrive after the chunk itself, so it is queued rather than sent

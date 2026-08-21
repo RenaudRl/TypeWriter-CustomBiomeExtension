@@ -1,15 +1,20 @@
 package btcrenaud.custombiome.command
 
+import btcrenaud.custombiome.entries.audience.BiomeRegionHolder
 import btcrenaud.custombiome.registry.CustomBiomeRegistry
 import btcrenaud.custombiome.service.BiomePainter
 import btcrenaud.custombiome.util.BiomePacketHelper
 import btcrenaud.custombiome.util.BiomeResolver
+import btcrenaud.custombiome.util.WorldEditHandler
+import com.google.gson.JsonObject
 import com.typewritermc.core.extension.annotations.TypewriterCommand
 import com.typewritermc.engine.paper.command.dsl.*
+import com.typewritermc.engine.paper.entry.StagingManager
 import com.typewritermc.engine.paper.utils.msg
 import com.typewritermc.engine.paper.utils.sendMini
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import org.bukkit.entity.Player
+import org.koin.java.KoinJavaComponent
 
 /**
  * Operator commands for custom biomes.
@@ -109,6 +114,15 @@ fun CommandTree.biomeCommand() = literal("biome") {
         }
     }
 
+    literal("region") {
+        withPermission("typewriter.biome.region")
+        entry("entry", BiomeRegionHolder::class) { target ->
+            executePlayer { player ->
+                writeSelectionInto(player, target())
+            }
+        }
+    }
+
     executes {
         sender.sendMini(
             """
@@ -119,10 +133,65 @@ fun CommandTree.biomeCommand() = literal("biome") {
             |<white>/tw biome info [player]</white> <gray>- Show current biome info</gray>
             |<white>/tw biome apply <biome> [radius]</white> <gray>- Paint a biome around a player</gray>
             |<white>/tw biome refresh [radius]</white> <gray>- Resend biome data</gray>
+            |<white>/tw biome region <entry></white> <gray>- Fill an entry's corners from your WorldEdit selection</gray>
             |
             """.trimMargin()
         )
     }
+}
+
+/**
+ * Copies the sender's WorldEdit selection into the two corners of [target].
+ *
+ * WorldEdit stays a convenience: the same two fields can always be captured or typed from the
+ * panel, so a server without WorldEdit loses this shortcut and nothing else.
+ */
+private fun ExecutionContext<CommandSourceStack>.writeSelectionInto(player: Player, target: BiomeRegionHolder) {
+    val selection = runCatching { WorldEditHandler.getSelection(player) }.getOrNull()
+    if (selection == null) {
+        sender.msg("<red>No WorldEdit selection (or WorldEdit is not installed).</red>")
+        return
+    }
+
+    val worldName = player.world.name
+    val staging = KoinJavaComponent.get<StagingManager>(StagingManager::class.java)
+    val pageId = staging.findEntryPage(target.id).getOrNull()
+    if (pageId == null) {
+        sender.msg("<red>Could not find the page holding '${target.name}'.</red>")
+        return
+    }
+
+    val min = selection.minimumPoint
+    val max = selection.maximumPoint
+
+    val failures = listOf(
+        "cornerA" to position(worldName, min.x().toDouble(), min.y().toDouble(), min.z().toDouble()),
+        "cornerB" to position(worldName, max.x().toDouble(), max.y().toDouble(), max.z().toDouble()),
+    ).mapNotNull { (field, value) ->
+        staging.updateEntryField(pageId, target.id, field, value).exceptionOrNull()?.message ?: return@mapNotNull null
+    }
+
+    if (failures.isNotEmpty()) {
+        sender.msg("<red>Could not write the region: ${failures.joinToString(", ")}</red>")
+        return
+    }
+
+    sender.msg(
+        "Region of <white>${target.name}</white> set to " +
+            "<green>${min.x()}, ${min.y()}, ${min.z()}</green> → " +
+            "<green>${max.x()}, ${max.y()}, ${max.z()}</green> in $worldName."
+    )
+    sender.msg("<gray>Publish the page for it to take effect.</gray>")
+}
+
+/** The shape `PositionSerializer` reads back. */
+private fun position(world: String, x: Double, y: Double, z: Double): JsonObject = JsonObject().apply {
+    addProperty("world", world)
+    addProperty("x", x)
+    addProperty("y", y)
+    addProperty("z", z)
+    addProperty("yaw", 0f)
+    addProperty("pitch", 0f)
 }
 
 /**

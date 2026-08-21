@@ -70,7 +70,10 @@ object BiomePacketHelper {
         val sectionCount = (world.maxHeight - world.minHeight) / 16
         val data = chunks.associate { (cx, cz) ->
             Vector2i(cx, cz) to
-                WrapperPlayServerChunkBiomes.ChunkBiomeData.createWithSingleBiome(networkId, sectionCount)
+                WrapperPlayServerChunkBiomes.ChunkBiomeData.createWithRepeatingPalette(
+                    uniformPalette(networkId),
+                    sectionCount,
+                )
         }
 
         runCatching {
@@ -78,6 +81,17 @@ object BiomePacketHelper {
         }.onFailure { error ->
             logger.warn("Failed to send biome overlay to {}: {}", player.name, error.message)
         }
+    }
+
+    /**
+     * Sends the biome data the world really holds for [chunks] to one player.
+     *
+     * This is how an overlay is undone: the client is simply told the truth again, for that player
+     * only, without disturbing anyone else looking at the same chunks.
+     */
+    fun sendRealBiomes(player: Player, world: World, chunks: Set<Pair<Int, Int>>) {
+        if (chunks.isEmpty()) return
+        send(player, world, chunks)
     }
 
     private fun send(player: Player, world: World, chunks: Set<Pair<Int, Int>>) {
@@ -126,6 +140,26 @@ object BiomePacketHelper {
             }
         }
 
+        return palette
+    }
+
+    /**
+     * A palette where every cell holds the same biome.
+     *
+     * `ChunkBiomeData.createWithSingleBiome` would say this in one call, but it builds its storage
+     * with `bitsPerEntry = 0`, which `BitStorage` rejects outright — the call throws before sending
+     * anything. Building the palette here goes through exactly the same code path the real-biome
+     * packets already use.
+     */
+    private fun uniformPalette(networkId: Int): DataPalette {
+        val palette = DataPalette.createForBiome()
+        for (qx in 0 until CELLS) {
+            for (qy in 0 until CELLS) {
+                for (qz in 0 until CELLS) {
+                    palette.set(qx, qy, qz, networkId)
+                }
+            }
+        }
         return palette
     }
 
