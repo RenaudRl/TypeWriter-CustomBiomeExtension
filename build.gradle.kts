@@ -1,10 +1,10 @@
 plugins {
-    kotlin("jvm") version "2.3.20"
-    id("com.typewritermc.module-plugin") version "2.1.0"
+    kotlin("jvm") version "2.2.10"
+    id("com.typewritermc.module-plugin") version "2.2.0"
 }
 
 group = "btcrenaud"
-version = "0.6"
+version = "0.7"
 
 repositories {
     maven("https://jitpack.io/")
@@ -62,7 +62,7 @@ typewriter {
 
             Works on Paper and Folia. WorldEdit is optional and only used for selection painting.
         """.trimIndent()
-        engineVersion = "0.9.0-beta-175"
+        engineVersion = "0.9.0-beta-176"
         channel = com.typewritermc.moduleplugin.ReleaseChannel.BETA
         paper()
     }
