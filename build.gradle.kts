@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "btcrenaud"
-version = "0.7"
+version = "0.8"
 
 repositories {
     maven("https://jitpack.io/")
@@ -62,7 +62,7 @@ typewriter {
 
             Works on Paper and Folia. WorldEdit is optional and only used for selection painting.
         """.trimIndent()
-        engineVersion = "0.9.0-beta-176"
+        engineVersion = "0.9.0-beta-177"
         channel = com.typewritermc.moduleplugin.ReleaseChannel.BETA
         paper()
     }
