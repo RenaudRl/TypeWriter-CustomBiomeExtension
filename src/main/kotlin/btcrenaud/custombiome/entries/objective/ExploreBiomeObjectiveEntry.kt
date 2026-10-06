@@ -1,33 +1,24 @@
 package btcrenaud.custombiome.entries.objective
 
-import btcrenaud.custombiome.entries.event.crossedQuart
 import btcrenaud.custombiome.service.BiomeDiscoveryService
 import btcrenaud.custombiome.service.BiomeExploration
-import btcrenaud.custombiome.service.BiomeTrackingService
 import btcrenaud.custombiome.util.BiomeResolver
 import com.typewritermc.core.books.pages.Colors
-import com.typewritermc.core.entries.Query
 import com.typewritermc.core.entries.Ref
 import com.typewritermc.core.entries.emptyRef
-import com.typewritermc.core.entries.ref
 import com.typewritermc.core.extension.annotations.Colored
 import com.typewritermc.core.extension.annotations.Entry
-import com.typewritermc.core.extension.annotations.EntryListener
 import com.typewritermc.core.extension.annotations.Help
 import com.typewritermc.core.extension.annotations.Placeholder
-import com.typewritermc.core.interaction.context
 import com.typewritermc.engine.paper.entry.Criteria
 import com.typewritermc.engine.paper.entry.TriggerableEntry
 import com.typewritermc.engine.paper.entry.entries.AudienceEntry
 import com.typewritermc.engine.paper.entry.entries.ConstVar
 import com.typewritermc.engine.paper.entry.entries.Var
-import com.typewritermc.engine.paper.entry.inAudience
-import com.typewritermc.engine.paper.entry.triggerEntriesFor
 import com.typewritermc.quest.entries.ObjectiveEntry
 import com.typewritermc.quest.entries.QuestEntry
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Player
-import org.bukkit.event.player.PlayerMoveEvent
 import java.util.Optional
 
 /**
@@ -35,8 +26,8 @@ import java.util.Optional
  *
  * It reads the same discovery record the tracker fills in, so "go find the corrupted forest" needs
  * no trigger wiring: walking into the biome is the completion condition. The check runs when the
- * player crosses into a biome, never on every step, and fires [triggers] while the objective is
- * active for them.
+ * player crosses into a biome, never on every step (see [ExploreBiomeListener]), and fires
+ * [triggers] while the objective is active for them.
  */
 @Entry(
     "explore_biome_objective",
@@ -78,24 +69,4 @@ class ExploreBiomeObjectiveEntry(
 
     /** The listed biomes that resolve on this server; identifiers that do not resolve are ignored. */
     fun requiredKeys(): List<NamespacedKey> = biomes.mapNotNull { BiomeResolver.resolve(it)?.key }
-}
-
-/**
- * Evaluates the objectives when a player crosses into a new biome.
- *
- * Only a change of biome can complete an objective, and biomes are stored per 4x4x4 cell, so the move
- * is dropped before anything else unless a cell boundary was crossed. This listener also feeds the
- * discovery record: it exists exactly while an objective does, which is when that record is needed.
- * It runs on the region thread owning the player; firing the triggers only queues them.
- */
-@EntryListener(ExploreBiomeObjectiveEntry::class)
-fun onPlayerMoveExploreBiome(event: PlayerMoveEvent, query: Query<ExploreBiomeObjectiveEntry>) {
-    if (!event.crossedQuart()) return
-
-    val player = event.player
-    val entered = BiomeTrackingService.observe(player, event.to.block.biome, event)?.to?.key ?: return
-
-    query.findWhere { entered in it.requiredKeys() }
-        .filter { it.isComplete(player) && player.inAudience(it.ref()) }
-        .forEach { it.triggers.triggerEntriesFor(player, context()) }
 }

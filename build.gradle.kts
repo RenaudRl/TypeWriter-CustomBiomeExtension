@@ -34,6 +34,9 @@ dependencies {
     compileOnly("com.typewritermc:QuestExtension:0.9.0")
 
     testImplementation(kotlin("test"))
+    // The listener test builds real Bukkit proxies; paper-api is not on the test runtime classpath
+    // through compileOnly, so it is named here.
+    testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
 }
 
 // The engine, Paper and the rest are compileOnly: the server provides them at runtime. Tests get

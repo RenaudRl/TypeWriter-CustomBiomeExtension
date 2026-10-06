@@ -1,6 +1,8 @@
 package btcrenaud.custombiome
 
 import btcrenaud.custombiome.entries.manifest.CustomBiomeDefinitionEntry
+import btcrenaud.custombiome.entries.objective.ExploreBiomeListener
+import btcrenaud.custombiome.entries.objective.ExploreBiomeObjectiveEntry
 import btcrenaud.custombiome.service.BiomeDiscoveryService
 import btcrenaud.custombiome.service.BiomeTrackingService
 import btcrenaud.custombiome.service.PaintedChunks
@@ -25,6 +27,8 @@ object CustomBiomeInitializer : Initializable, Listener {
 
     private val logger = LoggerFactory.getLogger(CustomBiomeInitializer::class.java)
 
+    private var exploreListener: ExploreBiomeListener? = null
+
     override suspend fun initialize() {
         Bukkit.getLogger().info("[CustomBiome] Initializing extension...")
 
@@ -42,6 +46,11 @@ object CustomBiomeInitializer : Initializable, Listener {
         definitions.forEach { it.register() }
 
         Bukkit.getPluginManager().registerEvents(this, plugin)
+        exploreListener = ExploreBiomeListener.register(
+            Bukkit.getPluginManager(),
+            plugin,
+            Query.find<ExploreBiomeObjectiveEntry>().toList(),
+        )
         PlayerBiomeOverlayService.register()
 
         Bukkit.getOnlinePlayers().forEach { player ->
@@ -55,6 +64,8 @@ object CustomBiomeInitializer : Initializable, Listener {
         logger.info("Shutting down Custom Biome Extension...")
 
         HandlerList.unregisterAll(this)
+        ExploreBiomeListener.unregister(exploreListener)
+        exploreListener = null
         PlayerBiomeOverlayService.unregister()
 
         BiomeTrackingService.clear()
