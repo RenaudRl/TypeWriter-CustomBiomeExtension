@@ -101,7 +101,7 @@ class LeaveBiomeEventEntry(
  * biomes are stored per quart, so every other move cannot possibly change the answer. This keeps
  * the hottest event on the server cheap.
  */
-private fun PlayerMoveEvent.crossedQuart(): Boolean =
+internal fun PlayerMoveEvent.crossedQuart(): Boolean =
     (from.blockX shr 2) != (to.blockX shr 2) ||
         (from.blockY shr 2) != (to.blockY shr 2) ||
         (from.blockZ shr 2) != (to.blockZ shr 2)
@@ -110,7 +110,7 @@ private fun PlayerMoveEvent.crossedQuart(): Boolean =
 fun onPlayerMoveEnterBiome(event: PlayerMoveEvent, query: Query<EnterBiomeEventEntry>) {
     if (!event.crossedQuart()) return
 
-    val transition = BiomeTrackingService.observe(event.player, event.to.block.biome) ?: return
+    val transition = BiomeTrackingService.observe(event.player, event.to.block.biome, event) ?: return
     val entered = transition.to
 
     query.findWhere { entry ->
@@ -130,7 +130,7 @@ fun onPlayerMoveEnterBiome(event: PlayerMoveEvent, query: Query<EnterBiomeEventE
 fun onPlayerMoveLeaveBiome(event: PlayerMoveEvent, query: Query<LeaveBiomeEventEntry>) {
     if (!event.crossedQuart()) return
 
-    val transition = BiomeTrackingService.observe(event.player, event.to.block.biome) ?: return
+    val transition = BiomeTrackingService.observe(event.player, event.to.block.biome, event) ?: return
     // Nothing was left when the player had no tracked biome yet (first move after joining).
     val left = transition.from ?: return
 

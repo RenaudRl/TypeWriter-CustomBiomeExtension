@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **`explore_biome_objective` now reads `biomes` and `requireAll`.** Until now `isComplete` had no
+  caller, so the two fields did nothing. When a player crosses into a biome (the check is skipped
+  unless they crossed a 4x4x4 cell boundary, so walking inside a biome costs nothing), every
+  objective listing that biome whose requirement is met, and which is active for the player, fires
+  its new `triggers` field. The objective also records discovery itself, so it works without any
+  `enter_biome_event` on the page.
+- Fixed `enter_biome_event` firing twice when it was the only biome event on the page, and
+  `leave_biome_event` or the new objective being starved when a third listener existed: the
+  transition of a move is now shared by identity of the move event instead of by a read counter.
+  The shared state is locked per player instead of globally.
+
 ## 0.5 — 2026-08-12
 
 - **Custom biomes exist immediately.** A definition is registered into the live registry as soon
