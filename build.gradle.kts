@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "btcrenaud"
-version = "0.8"
+version = "0.9"
 
 repositories {
     maven("https://jitpack.io/")
