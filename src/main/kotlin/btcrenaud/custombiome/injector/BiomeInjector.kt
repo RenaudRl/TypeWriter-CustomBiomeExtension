@@ -45,6 +45,12 @@ interface BiomeInjector {
     fun dataPackFormat(): Int?
 
     /**
+     * Highest data pack format that still accepts a bare `pack_format` in `pack.mcmeta`; anything
+     * newer must declare `min_format` and `max_format`. Null when the server does not say.
+     */
+    fun legacyDataPackFormatLimit(): Int? = null
+
+    /**
      * Numeric registry id of [key] as the client knows it, needed to build biome packets.
      * Null when the biome is unknown or the platform does not expose the registry.
      */

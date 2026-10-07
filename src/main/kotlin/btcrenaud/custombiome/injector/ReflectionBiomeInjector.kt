@@ -118,6 +118,8 @@ class ReflectionBiomeInjector private constructor(private val internals: Interna
 
     override fun dataPackFormat(): Int? = internals.dataPackFormat()
 
+    override fun legacyDataPackFormatLimit(): Int? = internals.legacyDataPackFormatLimit()
+
     override fun networkId(key: NamespacedKey): Int? = try {
         internals.networkId(key)
     } catch (error: Throwable) {
@@ -479,6 +481,18 @@ class ReflectionBiomeInjector private constructor(private val internals: Interna
         /** Data pack format of the running server, never hardcoded. */
         fun dataPackFormat(): Int? = runCatching {
             sharedConstantsClass.getField("DATA_PACK_FORMAT_MAJOR").getInt(null)
+        }.getOrNull()
+
+        /**
+         * `PackFormat.lastPreMinorVersion(PackType.SERVER_DATA)`. The class does not exist on servers
+         * older than the min/max format codec, which is when a bare `pack_format` is still correct.
+         */
+        fun legacyDataPackFormatLimit(): Int? = runCatching {
+            val packType = nms("net.minecraft.server.packs.PackType")
+            val serverData = packType.getField("SERVER_DATA").get(null)
+            nms("net.minecraft.server.packs.metadata.pack.PackFormat")
+                .getMethod("lastPreMinorVersion", packType)
+                .invoke(null, serverData) as Int
         }.getOrNull()
     }
 }

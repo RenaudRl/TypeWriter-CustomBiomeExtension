@@ -8,6 +8,9 @@
   `sunrise/sunset`) from packed integers into vectors. Both made every biome fail to register live and
   to be written to the datapack. The injector now follows the type the running server declares for
   each colour, so 1.21.11 to 26.2 behave as before.
+- Fixed the generated datapack logging "Error reading pack metadata, attempting fallback type" at every
+  start. Its `pack.mcmeta` declared a bare `pack_format`, which the server refuses above format 81; it now
+  declares `min_format` and `max_format`, the limit being read from the server.
 
 - **`explore_biome_objective` now reads `biomes` and `requireAll`.** Until now `isComplete` had no
   caller, so the two fields did nothing. When a player crosses into a biome (the check is skipped
