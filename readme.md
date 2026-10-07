@@ -1,65 +1,100 @@
 # CustomBiome Extension
 
 ![Java Version](https://img.shields.io/badge/Java-21-orange)
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Target](https://img.shields.io/badge/Target-Paper%20/%20Folia%20/%20BTC--CORE-blue)
+![Target](https://img.shields.io/badge/Target-Paper-blue)
+![Typewriter](https://img.shields.io/badge/Typewriter-0.9.0--beta--177-purple)
 
-**CustomBiome Extension** is a powerful environment management solution for **TypeWriter**, engineered for **BTC Studio** infrastructure. It allows developers to define and apply unique biomes with fully customizable colors and climate properties.
+**CustomBiome Extension** adds custom biomes to **Typewriter**: define colors and climate in the web editor, paint biomes into the world, or show a biome to a single player without touching the world.
 
 ---
 
 ## 🚀 Key Features
 
 ### 🎨 Visual Customization
-- **Custom Colors**: Define unique colors for Fog, Water, Sky, Grass, and Foliage.
-- **Atmospheric Control**: Create immersive environments with specific fog and sky settings.
+- **Custom colors**: fog, water, sky, grass and foliage, with reusable presets shared between biomes.
+- **Climate**: temperature and downfall for every custom biome.
 
-### 🌦️ Climate & Environment
-- **Climate Settings**: Configure temperature and downfall for every custom biome.
-- **Dynamic Application**: Apply biomes to specific locations, radii, or WorldEdit selections.
+### 🗺️ Applying biomes
+- **Apply and paint**: set a biome at a location or radius, or paint a region, with an optional snapshot to restore it later.
+- **Player overlays**: change what one player (or an audience) sees without changing the world.
+- **Packet-based refresh**: players see changes without re-logging.
+- **Transition cinematics**: change the biome a player sees during a cinematic.
 
-### ⚡ Performance & Synchronization
-- **Packet-Based Refresh**: Instant visual updates for players without requiring a server re-log.
-- **Folia Compatible**: Designed to work seamlessly with region-based threading.
+### 🧭 Tracking and quests
+- Enter and leave events, facts, variables and PlaceholderAPI placeholders.
+- **Explore Biome Objective**: completes when the player discovers the listed biomes (`biomes`, `requireAll`) and runs its `triggers`. It records discovery itself, no Enter Biome Event is needed.
 
 ---
 
-## ⚙️ Configuration
+## 📦 Entries
 
-CustomBiome Extension configuration is managed via TypeWriter's manifest system (`custom_biome_definition`).
+| Category | Entries |
+|---|---|
+| Manifest | `custom_biome_definition`, `custom_biome_preset` |
+| Actions | `apply_biome_action`, `paint_biome_region_action`, `restore_biome_action`, `player_biome_overlay_action`, `refresh_biome_chunks_action` |
+| Events | `enter_biome_event`, `leave_biome_event` |
+| Facts | `player_biome_fact`, `is_in_custom_biome_fact`, `biome_discovery_fact`, `custom_biome_count_fact` |
+| Variables | `current_biome_variable`, `biome_property_variable`, `custom_biome_list_variable` |
+| Audience | `biome_overlay_audience`, `biome_region_audience` |
+| Cinematic | `biome_transition_cinematic` |
+| Objective | `explore_biome_objective` |
+
+Full field reference on the [wiki](https://docs.borntocraftstudio.net/extensions/free/custombiome/).
 
 > [!IMPORTANT]
-> Creating new biome definitions requires a **server restart** as it generates a secondary datapack that must be loaded during the server's startup phase.
+> Creating a new biome definition requires a **server restart**: the extension also writes a datapack that is read at startup.
 
 ---
 
-## 🛠 Building & Deployment
+## 🔣 Placeholders
+
+PlaceholderAPI, prefix `%typewriter_custombiome_<key>%`. Keys: `current`, `id`, `name`, `key`, `namespace`, `is_custom`, `temperature`, `downfall`, `base`, `count`, `list`, `discovered_count`, `discovered_list`.
+
+---
+
+## ⌨️ Commands and permissions
+
+| Command | Permission |
+|---|---|
+| `/typewriter biome` (parent) | `typewriter.biome` |
+| `/typewriter biome list` | `typewriter.biome.list` |
+| `/typewriter biome info [player]` | `typewriter.biome.info` |
+| `/typewriter biome apply <biome> [radius]` | `typewriter.biome.apply` |
+| `/typewriter biome refresh [radius]` (1 to 16) | `typewriter.biome.refresh` |
+| `/typewriter biome region <entry>` (uses your WorldEdit selection) | `typewriter.biome.region` |
+
+---
+
+## 🧩 Requirements
+
+- Typewriter engine `0.9.0-beta-177`, on **Paper**.
+- **PacketEvents**: biome packets sent to clients.
+- **Quest extension** (for the objective entry).
+- Optional: WorldEdit / FastAsyncWorldEdit (region painting from a selection), PlaceholderAPI.
+
+---
+
+## 🛠 Building
 
 Requires **Java 21**.
 
 ```bash
-# Clone the repository
 git clone https://github.com/RenaudRl/TypeWriter-CustomBiomeExtension.git
 cd TypeWriter-CustomBiomeExtension
-
-# Build the project
 ./gradlew clean build
 ```
 
-### Artifact Locations:
-- `build/libs/CustomBiome-[Version].jar`
+Artifact: `build/libs/`.
 
 ---
 
-## 🤝 Credits & Inspiration
-- **[TypeWriter](https://github.com/gabber235/Typewriter)** - The engine this extension is built for.
-- **[BTC Studio](https://github.com/RenaudRl)** - Maintenance and specialized optimizations.
-
----
+## 🤝 Credits
+- **[Typewriter](https://github.com/gabber235/Typewriter)**: the engine this extension is built for.
+- **[BTC Studio](https://github.com/RenaudRl)**: maintenance.
 
 ## 📜 License
-Licensed under the **MIT License**.
+GNU GPLv3 with an additional exception, see `LICENSE` and `LICENSE-EXCEPTION.md`.
 
 ## Documentation
 
-Full documentation available at [BTC Studio Docs](https://docs.borntocraftstudio.net/extensions/free/custombiome/).
+[BTC Studio Docs](https://docs.borntocraftstudio.net/extensions/free/custombiome/)
