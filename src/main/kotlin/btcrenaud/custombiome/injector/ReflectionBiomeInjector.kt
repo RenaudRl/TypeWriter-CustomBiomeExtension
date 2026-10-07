@@ -30,9 +30,11 @@ private fun Throwable.describe(): String =
  * is missing the injector reports itself unsupported with a precise reason instead of throwing
  * halfway through a registration and leaving the registry unfrozen.
  *
- * Signatures verified against Minecraft 26.2 (`Biome$BiomeBuilder`, `EnvironmentAttributeMap$Builder`,
- * `EnvironmentAttributes`, `SharedConstants`). Vanilla biomes are no longer shipped as JSON, so the
- * datapack representation is produced by encoding the built biome with `Biome.DIRECT_CODEC`.
+ * Signatures verified against Minecraft 26.2 and 26.3 (`Biome$BiomeBuilder`, `EnvironmentAttributeMap$Builder`,
+ * `EnvironmentAttributes`, `SharedConstants`). Differences between the two are absorbed here: 26.3 has no
+ * `Biome.getMobSettings()` (spawns are an environment attribute) and stores colour attributes as vectors.
+ * Vanilla biomes are no longer shipped as JSON, so the datapack representation is produced by encoding
+ * the built biome with `Biome.DIRECT_CODEC`.
  */
 class ReflectionBiomeInjector private constructor(private val internals: Internals) : BiomeInjector {
 
@@ -155,8 +157,13 @@ class ReflectionBiomeInjector private constructor(private val internals: Interna
 
         // Mobs and world generation always come from the base biome: this extension retextures
         // biomes, it does not redefine what spawns or generates in them.
-        biomeBuilderClass.getMethod("mobSpawnSettings", mobSpawnSettingsClass)
-            .invoke(builder, biomeClass.getMethod("getMobSettings").invoke(base))
+        // 26.3 dropped Biome.getMobSettings(): spawns became the NATURAL_MOB_SPAWNS environment
+        // attribute, which buildAttributes already inherits from the base biome. Only servers that
+        // still expose the getter need the spawns copied by hand.
+        legacyMobSettingsGetter?.let { getter ->
+            biomeBuilderClass.getMethod("mobSpawnSettings", mobSpawnSettingsClass)
+                .invoke(builder, getter.invoke(base))
+        }
         biomeBuilderClass.getMethod("generationSettings", biomeGenerationSettingsClass)
             .invoke(builder, biomeClass.getMethod("getGenerationSettings").invoke(base))
 
@@ -203,12 +210,17 @@ class ReflectionBiomeInjector private constructor(private val internals: Interna
             setAttributeMethod.invoke(builder, environmentAttribute(field), value)
         }
 
-        set("SKY_COLOR", attributes.sky)
-        set("FOG_COLOR", attributes.fog)
-        set("WATER_FOG_COLOR", attributes.waterFog)
-        set("CLOUD_COLOR", attributes.cloud)
-        set("SKY_LIGHT_COLOR", attributes.skyLight)
-        set("SUNRISE_SUNSET_COLOR", attributes.sunriseSunset)
+        fun setColor(field: String, rgb: Int?) {
+            if (rgb == null) return
+            set(field, colorValue(field, rgb))
+        }
+
+        setColor("SKY_COLOR", attributes.sky)
+        setColor("FOG_COLOR", attributes.fog)
+        setColor("WATER_FOG_COLOR", attributes.waterFog)
+        setColor("CLOUD_COLOR", attributes.cloud)
+        setColor("SKY_LIGHT_COLOR", attributes.skyLight)
+        setColor("SUNRISE_SUNSET_COLOR", attributes.sunriseSunset)
 
         set("FOG_START_DISTANCE", attributes.fogStartDistance)
         set("FOG_END_DISTANCE", attributes.fogEndDistance)
@@ -228,6 +240,8 @@ class ReflectionBiomeInjector private constructor(private val internals: Interna
 
         builder
     }
+
+    private class VectorConversions(val rgbToVector3: Method, val argbToVector4: Method)
 
     /**
      * Reflective handles onto the server, resolved eagerly so an unsupported platform is detected
@@ -276,6 +290,20 @@ class ReflectionBiomeInjector private constructor(private val internals: Interna
             .apply { isAccessible = true }
 
         val climateSettingsField: Field = biomeClass.getField("climateSettings")
+
+        /** Present up to 26.2; absent from 26.3, where spawns live in the attribute map. */
+        val legacyMobSettingsGetter: Method? = AttributeValues.methodOrNull(biomeClass, "getMobSettings")
+
+        /** `ARGB` conversions, only present where colour attributes are vectors (26.3+). */
+        private val vectorConversions: VectorConversions? by lazy {
+            runCatching {
+                val argb = nms("net.minecraft.util.ARGB")
+                VectorConversions(
+                    rgbToVector3 = argb.getMethod("vector3fFromRGB24", Int::class.javaPrimitiveType),
+                    argbToVector4 = argb.getMethod("vector4fFromARGB32", Int::class.javaPrimitiveType),
+                )
+            }.getOrNull()
+        }
 
         val setAttributeMethod: Method = environmentAttributeMapBuilderClass
             .getMethod("set", environmentAttributeClass, Any::class.java)
@@ -330,6 +358,24 @@ class ReflectionBiomeInjector private constructor(private val internals: Interna
         fun holderValue(holder: Any): Any = holderClass.getMethod("value").invoke(holder)
 
         fun environmentAttribute(field: String): Any = environmentAttributesClass.getField(field).get(null)
+
+        /**
+         * [rgb] (`0xRRGGBB`) in the form the attribute [field] stores on this server: a packed int
+         * up to 26.2, a JOML vector from 26.3 on, built by the game's own `ARGB` helpers so the
+         * colour space matches what the codec would read from JSON.
+         */
+        fun colorValue(field: String, rgb: Int): Any {
+            val valueClass = AttributeValues.valueClassOf(environmentAttributesClass.getField(field))
+            return when (AttributeValues.colorFormOf(valueClass)) {
+                ColorForm.PACKED_INT -> rgb
+                ColorForm.RGB_VECTOR -> requireConversions(field).rgbToVector3.invoke(null, rgb)
+                ColorForm.ARGB_VECTOR ->
+                    requireConversions(field).argbToVector4.invoke(null, AttributeValues.opaque(rgb))
+            }
+        }
+
+        private fun requireConversions(field: String): VectorConversions = vectorConversions
+            ?: throw IllegalStateException("$field is a vector colour but net.minecraft.util.ARGB has no vector conversion")
 
         @Suppress("UNCHECKED_CAST")
         fun moonPhase(name: String): Any? {

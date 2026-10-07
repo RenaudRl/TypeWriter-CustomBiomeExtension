@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Custom biomes work on Paper 26.3 again.** 26.3 removed `Biome.getMobSettings()` (mob spawns are
+  now the `natural_mob_spawns` environment attribute, which a custom biome already inherits from its
+  base biome) and turned the colour attributes (`sky`, `fog`, `water fog`, `cloud`, `sky light`,
+  `sunrise/sunset`) from packed integers into vectors. Both made every biome fail to register live and
+  to be written to the datapack. The injector now follows the type the running server declares for
+  each colour, so 1.21.11 to 26.2 behave as before.
+
 - **`explore_biome_objective` now reads `biomes` and `requireAll`.** Until now `isComplete` had no
   caller, so the two fields did nothing. When a player crosses into a biome (the check is skipped
   unless they crossed a 4x4x4 cell boundary, so walking inside a biome costs nothing), every
