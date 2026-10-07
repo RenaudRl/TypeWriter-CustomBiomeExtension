@@ -16,8 +16,14 @@ interface BiomeInjector {
     /** Whether this injector can actually register biomes on the running server. */
     val isSupported: Boolean
 
-    /** Short description of the strategy, surfaced in logs and `/tw biome list`. */
+    /** Short description of the strategy, written to the server log. */
     val describe: String
+
+    /**
+     * Why live injection is unavailable, or null when it works. `/tw biome list` words the strategy
+     * from this (an admin-editable snippet) rather than from [describe].
+     */
+    val unsupportedReason: String? get() = null
 
     /**
      * Registers [definition] in the live biome registry, inheriting everything it does not
@@ -69,6 +75,8 @@ class UnsupportedBiomeInjector(private val why: String) : BiomeInjector {
     override val isSupported: Boolean = false
 
     override val describe: String = "unsupported ($why)"
+
+    override val unsupportedReason: String = why
 
     override fun inject(definition: CustomBiomeDefinition): BiomeInjectionResult =
         BiomeInjectionResult.Failed(why)

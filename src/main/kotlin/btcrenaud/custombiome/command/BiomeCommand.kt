@@ -3,6 +3,8 @@ package btcrenaud.custombiome.command
 import btcrenaud.custombiome.entries.audience.BiomeRegionHolder
 import btcrenaud.custombiome.registry.CustomBiomeRegistry
 import btcrenaud.custombiome.service.BiomePainter
+import btcrenaud.custombiome.text.BiomeListState
+import btcrenaud.custombiome.text.BiomeTexts
 import btcrenaud.custombiome.util.BiomePacketHelper
 import btcrenaud.custombiome.util.BiomeResolver
 import btcrenaud.custombiome.util.WorldEditHandler
@@ -10,6 +12,7 @@ import com.google.gson.JsonObject
 import com.typewritermc.core.extension.annotations.TypewriterCommand
 import com.typewritermc.engine.paper.command.dsl.*
 import com.typewritermc.engine.paper.entry.StagingManager
+import com.typewritermc.engine.paper.extensions.placeholderapi.parsePlaceholders
 import com.typewritermc.engine.paper.utils.msg
 import com.typewritermc.engine.paper.utils.sendMini
 import io.papermc.paper.command.brigadier.CommandSourceStack
@@ -34,37 +37,22 @@ fun CommandTree.biomeCommand() = literal("biome") {
             val definitions = CustomBiomeRegistry.allDefinitions()
 
             if (definitions.isEmpty()) {
-                sender.msg("<yellow>No custom biomes registered.</yellow>")
+                say(BiomeTexts.listEmpty)
                 return@executes
             }
 
-            sender.sendMini("\n<gradient:#00d4ff:#0099ff><b>Custom Biomes (${definitions.size})</b></gradient>")
-            sender.sendMini("<dark_gray>Strategy: ${CustomBiomeRegistry.injector.describe}</dark_gray>\n")
+            show(BiomeTexts.listHeader(definitions.size))
+            show(BiomeTexts.listStrategy(CustomBiomeRegistry.injector.unsupportedReason))
 
             for (definition in definitions.sortedBy { it.displayName }) {
                 val key = definition.key
-                val live = CustomBiomeRegistry.resolveBiome(key) != null
-                val waiting = CustomBiomeRegistry.awaitingRestart(key)
-
-                val icon = when {
-                    live -> "<#7ed957>•</#7ed957>"
-                    waiting -> "<#ffcc00>⚠</#ffcc00>"
-                    else -> "<#ff6b6b>✖</#ff6b6b>"
-                }
-                val status = when {
-                    live -> "<green>Live in the registry</green>"
-                    waiting -> "<yellow>Written to the datapack — needs a restart</yellow>"
-                    else -> "<red>Not registered</red>"
+                val state = when {
+                    CustomBiomeRegistry.resolveBiome(key) != null -> BiomeListState.LIVE
+                    CustomBiomeRegistry.awaitingRestart(key) -> BiomeListState.WAITING_FOR_RESTART
+                    else -> BiomeListState.NOT_REGISTERED
                 }
 
-                val temp = definition.temperature?.let { " <gray>T:$it</gray>" } ?: ""
-                val down = definition.downfall?.let { " <gray>D:$it</gray>" } ?: ""
-
-                sender.sendMini(
-                    "<hover:show_text:'$status\n<gray>Click to copy: $key</gray>'>" +
-                        "<click:copy_to_clipboard:'$key'>$icon <white>${definition.displayName}</white> " +
-                        "<#a0a0a0>($key)</#a0a0a0>$temp$down</click></hover>"
-                )
+                show(BiomeTexts.listEntry(definition.displayName, "$key", state, definition.temperature, definition.downfall))
             }
         }
     }
@@ -75,18 +63,15 @@ fun CommandTree.biomeCommand() = literal("biome") {
             val biome = target.location.block.biome
             val definition = CustomBiomeRegistry.getDefinition(biome.key)
 
-            sender.sendMini("\n<gradient:#00d4ff:#0099ff><b>Biome Info for ${target.name}</b></gradient>\n")
-            sender.sendMini("<gray>Name:</gray> <white>${BiomeResolver.readableName(biome)}</white>")
-            sender.sendMini("<gray>ID:</gray> <white>${biome.key}</white>")
-            sender.sendMini(
-                "<gray>Custom:</gray> " +
-                    if (definition != null) "<green>Yes</green>" else "<gray>No</gray>"
-            )
+            show(BiomeTexts.infoHeader(target.name))
+            show(BiomeTexts.infoName(BiomeResolver.readableName(biome)))
+            show(BiomeTexts.infoId("${biome.key}"))
+            show(if (definition != null) BiomeTexts.infoCustomYes else BiomeTexts.infoCustomNo)
 
             definition?.let {
-                it.temperature?.let { value -> sender.sendMini("<gray>Temperature:</gray> <white>$value</white>") }
-                it.downfall?.let { value -> sender.sendMini("<gray>Downfall:</gray> <white>$value</white>") }
-                it.baseKey?.let { value -> sender.sendMini("<gray>Base Biome:</gray> <white>$value</white>") }
+                it.temperature?.let { value -> show(BiomeTexts.infoTemperature(value)) }
+                it.downfall?.let { value -> show(BiomeTexts.infoDownfall(value)) }
+                it.baseKey?.let { value -> show(BiomeTexts.infoBaseBiome("$value")) }
             }
         }
     }
@@ -124,21 +109,21 @@ fun CommandTree.biomeCommand() = literal("biome") {
     }
 
     executes {
-        sender.sendMini(
-            """
-            |
-            |<gradient:#00d4ff:#0099ff><b>Custom Biome Commands</b></gradient>
-            |
-            |<white>/tw biome list</white> <gray>- List all custom biomes</gray>
-            |<white>/tw biome info [player]</white> <gray>- Show current biome info</gray>
-            |<white>/tw biome apply <biome> [radius]</white> <gray>- Paint a biome around a player</gray>
-            |<white>/tw biome refresh [radius]</white> <gray>- Resend biome data</gray>
-            |<white>/tw biome region <entry></white> <gray>- Fill an entry's corners from your WorldEdit selection</gray>
-            |
-            """.trimMargin()
-        )
+        show(BiomeTexts.help())
     }
 }
+
+/**
+ * Replies go through snippets (see `BiomeTexts`), so an admin words them in the snippets file; the
+ * placeholders of PlaceholderAPI are read for a player sender. [say] carries the Typewriter reply
+ * prefix, [show] prints the text as it is (headers, lists).
+ */
+private fun ExecutionContext<CommandSourceStack>.say(text: String) = sender.msg(withPlaceholders(text))
+
+private fun ExecutionContext<CommandSourceStack>.show(text: String) = sender.sendMini(withPlaceholders(text))
+
+private fun ExecutionContext<CommandSourceStack>.withPlaceholders(text: String): String =
+    (sender as? Player)?.let { text.parsePlaceholders(it) } ?: text
 
 /**
  * Copies the sender's WorldEdit selection into the two corners of [target].
@@ -149,7 +134,7 @@ fun CommandTree.biomeCommand() = literal("biome") {
 private fun ExecutionContext<CommandSourceStack>.writeSelectionInto(player: Player, target: BiomeRegionHolder) {
     val selection = runCatching { WorldEditHandler.getSelection(player) }.getOrNull()
     if (selection == null) {
-        sender.msg("<red>No WorldEdit selection (or WorldEdit is not installed).</red>")
+        say(BiomeTexts.regionNoSelection)
         return
     }
 
@@ -157,7 +142,7 @@ private fun ExecutionContext<CommandSourceStack>.writeSelectionInto(player: Play
     val staging = KoinJavaComponent.get<StagingManager>(StagingManager::class.java)
     val pageId = staging.findEntryPage(target.id).getOrNull()
     if (pageId == null) {
-        sender.msg("<red>Could not find the page holding '${target.name}'.</red>")
+        say(BiomeTexts.regionPageNotFound(target.name))
         return
     }
 
@@ -172,16 +157,19 @@ private fun ExecutionContext<CommandSourceStack>.writeSelectionInto(player: Play
     }
 
     if (failures.isNotEmpty()) {
-        sender.msg("<red>Could not write the region: ${failures.joinToString(", ")}</red>")
+        say(BiomeTexts.regionWriteFailed(failures))
         return
     }
 
-    sender.msg(
-        "Region of <white>${target.name}</white> set to " +
-            "<green>${min.x()}, ${min.y()}, ${min.z()}</green> → " +
-            "<green>${max.x()}, ${max.y()}, ${max.z()}</green> in $worldName."
+    say(
+        BiomeTexts.regionDone(
+            entry = target.name,
+            min = "${min.x()}, ${min.y()}, ${min.z()}",
+            max = "${max.x()}, ${max.y()}, ${max.z()}",
+            world = worldName,
+        )
     )
-    sender.msg("<gray>Publish the page for it to take effect.</gray>")
+    say(BiomeTexts.regionPublishHint)
 }
 
 /** The shape `PositionSerializer` reads back. */
@@ -200,28 +188,25 @@ private fun position(world: String, x: Double, y: Double, z: Double): JsonObject
  */
 private fun ExecutionContext<CommandSourceStack>.reportRefresh(target: Player, chunks: Int) {
     if (chunks == 0) {
-        sender.msg("<yellow>No painted chunks near ${target.name} to refresh.</yellow>")
+        say(BiomeTexts.refreshNone(target.name))
         return
     }
-    sender.msg("Resent biome data for <green>$chunks</green> painted chunk(s) to ${target.name}.")
+    say(BiomeTexts.refreshDone(chunks, target.name))
 }
 
 private fun ExecutionContext<CommandSourceStack>.applyBiome(target: Player, biomeId: String, radius: Int) {
     val biome = BiomeResolver.resolve(biomeId)
     if (biome == null) {
-        sender.msg("<red>Unknown biome: $biomeId</red>")
-        sender.msg("<gray>Use /tw biome list to see available custom biomes.</gray>")
+        say(BiomeTexts.applyUnknown(biomeId))
+        say(BiomeTexts.applyUnknownHint)
         return
     }
 
     val result = BiomePainter.paintRadius(target.location, biome, radius)
     if (result.isEmpty) {
-        sender.msg("<yellow>Nothing to paint at that location.</yellow>")
+        say(BiomeTexts.applyNothing)
         return
     }
 
-    sender.msg(
-        "Painting <blue>${BiomeResolver.readableName(biome)}</blue> over " +
-            "<green>${result.quartsWritten}</green> cell(s) across ${result.chunksTouched} chunk(s)."
-    )
+    say(BiomeTexts.applyDone(BiomeResolver.readableName(biome), result.quartsWritten, result.chunksTouched))
 }

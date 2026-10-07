@@ -3,6 +3,7 @@ package btcrenaud.custombiome.entries.variable
 import btcrenaud.custombiome.registry.CustomBiomeRegistry
 import btcrenaud.custombiome.service.BiomeSource
 import btcrenaud.custombiome.service.BiomeView
+import btcrenaud.custombiome.text.BiomeTexts
 import btcrenaud.custombiome.util.BiomeResolver
 import com.typewritermc.core.books.pages.Colors
 import com.typewritermc.core.extension.annotations.Entry
@@ -90,8 +91,8 @@ class BiomePropertyVariableEntry(
         
         val result = when (property) {
             BiomeProperty.IS_CUSTOM -> BiomeResolver.isCustomBiome(biome).toString()
-            BiomeProperty.TEMPERATURE -> definition?.temperature?.toString() ?: "unknown"
-            BiomeProperty.DOWNFALL -> definition?.downfall?.toString() ?: "unknown"
+            BiomeProperty.TEMPERATURE -> definition?.temperature?.toString() ?: BiomeTexts.unknownValue
+            BiomeProperty.DOWNFALL -> definition?.downfall?.toString() ?: BiomeTexts.unknownValue
             BiomeProperty.BASE_BIOME -> definition?.baseKey?.toString() ?: biome.key.toString()
         }
         

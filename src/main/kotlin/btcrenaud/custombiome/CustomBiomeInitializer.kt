@@ -9,6 +9,7 @@ import btcrenaud.custombiome.service.PaintedChunks
 import btcrenaud.custombiome.service.PlayerBiomeOverlayService
 import btcrenaud.custombiome.placeholder.CustomBiomePlaceholders
 import btcrenaud.custombiome.registry.CustomBiomeRegistry
+import btcrenaud.custombiome.text.registerBiomeTextSnippets
 import btcrenaud.custombiome.util.BiomeResolver
 import com.typewritermc.core.entries.Query
 import com.typewritermc.core.extension.Initializable
@@ -31,6 +32,7 @@ object CustomBiomeInitializer : Initializable, Listener {
 
     override suspend fun initialize() {
         Bukkit.getLogger().info("[CustomBiome] Initializing extension...")
+        registerBiomeTextSnippets()
 
         // The datapack has to live in the world folder, not in the plugin folder: the server only
         // reads world/datapacks.

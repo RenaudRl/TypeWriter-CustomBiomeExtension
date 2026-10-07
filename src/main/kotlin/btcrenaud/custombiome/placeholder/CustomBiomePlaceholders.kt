@@ -3,6 +3,7 @@ package btcrenaud.custombiome.placeholder
 import btcrenaud.custombiome.registry.CustomBiomeRegistry
 import btcrenaud.custombiome.service.BiomeDiscoveryService
 import btcrenaud.custombiome.service.BiomeView
+import btcrenaud.custombiome.text.BiomeTexts
 import btcrenaud.custombiome.util.BiomeResolver
 import com.typewritermc.core.extension.annotations.Singleton
 import com.typewritermc.engine.paper.extensions.placeholderapi.PlaceholderHandler
@@ -53,8 +54,8 @@ class CustomBiomePlaceholders : PlaceholderHandler {
             "key" -> biome.key.key
             "namespace" -> biome.key.namespace
             "is_custom" -> BiomeResolver.isCustomBiome(biome).toString()
-            "temperature" -> definition?.temperature?.toString() ?: "unknown"
-            "downfall" -> definition?.downfall?.toString() ?: "unknown"
+            "temperature" -> definition?.temperature?.toString() ?: BiomeTexts.unknownValue
+            "downfall" -> definition?.downfall?.toString() ?: BiomeTexts.unknownValue
             "base" -> definition?.baseKey?.toString() ?: biome.key.toString()
             "discovered_count" -> BiomeDiscoveryService.count(player).toString()
             "discovered_list" -> BiomeDiscoveryService.all(player).joinToString(", ")
