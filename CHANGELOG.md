@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9 — 2026-10-08
 
 - **Custom biomes work on Paper 26.3 again.** 26.3 removed `Biome.getMobSettings()` (mob spawns are
   now the `natural_mob_spawns` environment attribute, which a custom biome already inherits from its
